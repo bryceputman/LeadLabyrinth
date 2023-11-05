@@ -1,3 +1,18 @@
+# Pickle files (used to store data like steps)
 *.pkl
+
+# Zip files (stores model weights)
 *.zip
+
+# Database files (stores studys)
 *.db
+
+# JetBrains IDE configuration
+.idea/
+
+# Python cache
+__pycache__/
+
+# Build and distribution directories
+build/
+dist/
