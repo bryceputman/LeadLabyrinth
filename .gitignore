@@ -16,3 +16,6 @@ __pycache__/
 # Build and distribution directories
 build/
 dist/
+
+# PyInstaller spec file (used in creating executable)
+main.spec
