@@ -7,33 +7,7 @@ from functools import lru_cache
 import pygame
 import torch
 
-# Set the dimensions of the window
-# ENEMY_PROJECTILE_COOLDOWN = 1000000000000000000 #.8  # in s
-# BASE_ENEMY_BULLET_SPEED = 0
-# game states
-SCREEN_WIDTH = 1000
-SCREEN_HEIGHT = 800
-PLAYER_SPEED = 20
-PROJECTILE_COOLDOWN = .2  # in seconds
-PLAYER_DAMAGE = 2
-SECONDARY_PROJECTILE_COOLDOWN = 100000000000000 # 1  # in secs
-ENEMY_PROJECTILE_COOLDOWN = .8  # in s
-BASE_ENEMY_DAMAGE = 10
-BASE_ENEMY_BULLET_SPEED = 225
-BASE_ENEMY_HEALTH = 100
-BASE_ENEMY_SPEED = 3
-# MAP_WIDTH = 2000  # 1500
-# MAP_HEIGHT = 1500  # 1500
-MAP_WIDTH = 1000  # for training
-MAP_HEIGHT = 800
-MAX_BULLET_SPEED = 1000
-MAX_PLAYER_HEALTH = 250
-MAX_ENEMY_SPEED = 500
-PLAYING = 1
-GAME_OVER = 2
-PAUSED = 3
-SHOP = 4
-
+from config import *
 
 class GameObject:
     def __init__(self, x, y, image):

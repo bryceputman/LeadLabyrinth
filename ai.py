@@ -2,7 +2,8 @@ import os
 import pickle
 import random
 import time
-import gym
+import gymnasium as gym
+
 import numpy as np
 import optuna
 from matplotlib import pyplot as plt
@@ -10,7 +11,7 @@ from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from LeadLabyrinth.game import SCREEN_WIDTH, SCREEN_HEIGHT, MAX_ENEMY_SPEED, MAX_BULLET_SPEED, Game, AIPlayer
+from game import SCREEN_WIDTH, SCREEN_HEIGHT, MAX_ENEMY_SPEED, MAX_BULLET_SPEED, Game, AIPlayer
 
 
 class SingleAgentEnvironment(gym.Env):
@@ -29,16 +30,13 @@ class SingleAgentEnvironment(gym.Env):
         self.game.wave_manager.current_wave = 0
         self.game.wave_manager.generate_wave_patterns()
         self.game.wave_manager.generate_wave()
-        self.game.wave_manager.wave_cooldown = 0  # seconds in between each wave
+        self.game.wave_manager.wave_cooldown = 0  # Seconds in between each wave
         self.game.wave_ended = False  # Reset the flag as the new wave has started
         self.prev_health = None
         self.prev_enemy_count = None
         self.control_clock = control_clock
         self.player = self.game.players[agent_id]
         self.frame_repeats = frame_repeats
-        # self.player.delta_time = 0.016
-        # Define action space and observation space
-        # self.action_space = gym.spaces.Box(low=0, high=1, shape=(4,))
         self.action_space = gym.spaces.MultiDiscrete([2, 2, 2, 2])
 
         self.state_size = self.TOTAL_ATTRIBUTES
@@ -54,30 +52,24 @@ class SingleAgentEnvironment(gym.Env):
             self.delta_time_range = None
             self.delta_time = delta_time
             self.avg_delta_time = delta_time
-        # if self.control_clock:
-        #     self.clock = GameClock(update_callback=self.game.game_logic, frame_callback=self.game.draw_game_state
-        #                            , training_ai=training_ai, playing_ai=playing_ai, should_render=should_render)
 
-    def reset(self):
-        # self.game = Game(rendering=self.should_render)
-        # self.game.wave_manager.current_wave = 1
-        # self.game.wave_manager.current_wave += 1
-        # self.game.wave_manager.generate_wave_patterns()
-        # self.game.wave_manager.generate_wave()
-        # self.game.wave_manager.wave_cooldown = 0  # seconds in between each wave
-        # self.game.wave_ended = False  # Reset the flag as the new wave has started
+    def reset(self, seed=None):
         self.game.reset()
         self.player = next((player for player in self.game.players if isinstance(player, AIPlayer)), None)
         initial_state = self.get_state()
-        return initial_state
+        reset_info = {}  # Populate this as needed, can remain empty if no additional info
+        # Return both the initial state and the reset info
+        return initial_state, reset_info
 
     def step(self, action):
         total_reward = 0
+        terminated = False  # Indicates natural end of an episode
+        truncated = False   # Indicates an external condition cutting the episode short
+        info = {}
 
-        for i in range(self.frame_repeats):  # mulitiple game ticks per step, to reduce cost to find more actions (don't need 60 actions a sec)
+        for i in range(self.frame_repeats):
             if self.delta_time_range:
                 self.delta_time = random.uniform(*self.delta_time_range)
-            # self.game.wave_manager.current_wave = 1
             self.prev_health = self.player.health
             self.prev_enemy_count = len(self.game.wave_manager.enemies)
             if self.control_clock:
@@ -89,38 +81,18 @@ class SingleAgentEnvironment(gym.Env):
 
             new_state = self.get_state()
             reward = self._get_reward()
-            done = self.player not in self.game.players
+            if self.player not in self.game.players:  # Condition for termination
+                terminated = True
             total_reward += reward
 
-            if done:
-                break  # exit loop if game is over
+            if terminated:
+                break  # exit loop if game is naturally over
 
-        if done:
+        if terminated:
             self.reset()
-        return new_state, total_reward / self.frame_repeats, done, {}
 
-        # Apply the action to the agent if alive
-            # TODO probably remove this idk, maybe look to make ai pick which enemy or call a sub modular thing
-            #auto aim
-            # if self.game.wave_manager.enemies:
-            #     enemies_with_distances = [(enemy, self.distance_to_player_squared(enemy))
-            #                               for enemy in self.game.wave_manager.enemies]
-            #     sorted_enemies = sorted(enemies_with_distances, key=lambda x: x[1])[:self.NUM_ENEMIES_LISTED]
-            #     closest_enemy = sorted_enemies[0][0]  # Extracting the enemy object of the closest enemy
-            #     action[4] = closest_enemy.rect.centerx / SCREEN_WIDTH  # Normalizing the x-coordinate
-            #     action[5] = closest_enemy.rect.centery / SCREEN_HEIGHT  # Normalizing the y-coordinate
-            # else:
-            #     action[4] = 0
-            #     action[5] = 0
-            # self.apply_action_to_agent(action)
-
-        # print(f"state: {new_state}")
-        # print(f"action {action}")
-        # print(f"player speed: {self.player.speed}")
-        # if self.game.wave_manager.enemies[0]:
-        #     print(f"enemy speed: {self.game.wave_manager.enemies[0].speed}")
-
-        # return new_state, reward, done, {}
+        # Ensure that the environment returns observation, reward, terminated, truncated, and info
+        return new_state, total_reward / self.frame_repeats, terminated, truncated, info
 
     def apply_action_to_agent(self, action):
         #auto aim
@@ -133,34 +105,19 @@ class SingleAgentEnvironment(gym.Env):
             mouse_y = closest_enemy.rect.centery # Normalizing the y-coordinate
         else:
             mouse_x, mouse_y = 0,0
-        # print(f"applying_action: {action}")
-        # print(f"delta_time: {self.game.delta_time}")
-        # print(f"ai_player bullet timer {self.player.secondary_projectile_timer}")
         keys = self.player.action_to_keys(action)
-        # mouse_buttons, _, _ = self.player.action_to_mouse_buttons(action)
         if mouse_x or mouse_y != 0:
             mouse_buttons = (True, False, False)
         else:
             mouse_buttons = (False, False, False)
 
-        # print(mouse_x, mouse_y)
-        # if self.control_clock:
         self.game.all_bullets.extend(
             self.player.move((keys, mouse_buttons, mouse_x, mouse_y), self.delta_time))
 
         self.game.all_bullets.extend(
             self.player.fire((keys, mouse_buttons, mouse_x, mouse_y), self.delta_time))
-            # self.game.all_bullets.extend(
-            #     self.player.fire_secondary((keys, mouse_buttons, mouse_x, mouse_y), 0.01666))
-        #
-        # else:
-        #     self.game.all_bullets.extend(
-        #         self.player.move((keys, mouse_buttons, mouse_x, mouse_y), self.player.delta_time))
-        #     self.game.all_bullets.extend(
-        #         self.player.fire((keys, mouse_buttons, mouse_x, mouse_y), self.player.delta_time))
-        #     self.game.all_bullets.extend(
-        #         self.player.fire_secondary((keys, mouse_buttons, mouse_x, mouse_y), self.player.delta_time))
 
+    #TODO add reward for hitting enemy if agent aims
     def _get_reward(self):
 
         # ex: if 60 fps, lose constant * 60 hp, so in graph, the avg when dying once per sec, is 1
@@ -169,56 +126,10 @@ class SingleAgentEnvironment(gym.Env):
         # Calculate reward for agent
         reward = 0
 
-        # TODO change if the ai is aiming
-
-
         # Penalize the agent for losing health
         if self.player.health < self.prev_health:
             reward -= min(self.player.max_health, (self.prev_health - self.player.health)) * health_scaling_factor
-            # if self.player.health < 0:
-            #     reward -= 3 * (1 / self.avg_delta_time)
 
-        # TODO UNCOMMENT IF AIMING
-        # # Reward the agent for hitting enemies
-        # for enemy in self.game.wave_manager.enemies:
-        #     prev_enemy_health = self.prev_enemy_healths.get(enemy, enemy.health)
-        #     enemy_health_scaling_factor = 2.0 / max(enemy.max_health, 0.00001)
-        #     if enemy.health < prev_enemy_health:
-        #         reward += (prev_enemy_health - enemy.health) * enemy_health_scaling_factor
-        #     # Update the previous health for the next step
-        #     self.prev_enemy_healths[enemy] = enemy.health
-        #
-        # # Reward the agent for killing enemies
-        # current_enemy_count = len(self.game.wave_manager.enemies)
-        # if current_enemy_count < self.prev_enemy_count:
-        #     reward += (self.prev_enemy_count - current_enemy_count)
-
-        # frames_per_sec = 60
-        # if len(self.game.wave_manager.enemies) > 0:
-        #     max_center_neg_reward_per_second = .5  # .5 for norm
-        # else:
-        #     max_center_neg_reward_per_second = 5
-        #
-        # max_center_neg_reward_per_frame = max_center_neg_reward_per_second / frames_per_sec
-        # taxi cab distance
-        # reward -= abs((SCREEN_WIDTH // 2 - self.player.rect.centerx) / (SCREEN_WIDTH // 2)) * max_center_neg_reward
-        # reward -= abs((SCREEN_HEIGHT // 2 - self.player.rect.centery) / (SCREEN_HEIGHT // 2)) * max_center_neg_reward
-
-        # euclidian distance
-        # distance = ((SCREEN_WIDTH // 2 - self.player.rect.centerx) ** 2 + (
-        #             SCREEN_HEIGHT // 2 - self.player.rect.centery) ** 2) ** 0.5
-        # normalized_distance = distance / ((SCREEN_WIDTH // 2) ** 2 + (SCREEN_HEIGHT // 2) ** 2) ** 0.5
-        # squared_normalized_distance = distance ** 2 / ((SCREEN_WIDTH // 2) ** 2 + (SCREEN_HEIGHT // 2) ** 2)
-        #
-        # reward -= squared_normalized_distance * max_center_neg_reward_per_frame
-        # print(f"norm penalty per sec: {normalized_distance * max_center_neg_reward_per_second}")
-        # print(f"squared penalty per sec: {squared_normalized_distance * max_center_neg_reward_per_second}")
-
-        # constant_penalty_per_frame = 1 / frames_per_sec  # which is 1/60 for 60 fps
-        # reward += constant_penalty_per_frame
-
-        # if reward != -0.001666:
-        # print(reward)
         return reward
 
     def get_state(self):
@@ -227,11 +138,7 @@ class SingleAgentEnvironment(gym.Env):
         # player information
         player_pos_screen = self.player.camera.apply(self.player.rect).center
         state[:self.PLAYER_ATTRIBUTES] = [player_pos_screen[0] / SCREEN_WIDTH, player_pos_screen[1] / SCREEN_HEIGHT]
-        # removed: self.player.health / float(self.player.max_health),
-        # current
-        # , max(0, self.player.dash_timer),
-        # max(0, self.player.secondary_projectile_timer)
-        # print("enemies: ", self.game.wave_manager.enemies)
+
         # Calculate distances for enemies
         enemies_with_distances = [(enemy, self.distance_to_player_squared(enemy))
                                   for enemy in self.game.wave_manager.enemies]
@@ -579,27 +486,10 @@ class StudyManager:
         )
         return agent
 
-    # TODO remove pickling version after testing rdb with sqllite
-    # def load_or_create_study(self):
-    #     try:
-    #         with open(f"{self.study_name}.pkl", "rb") as f:
-    #             self.study = pickle.load(f)
-    #         print("Study loaded from disk.")
-    #     except FileNotFoundError:
-    #         print("Study not found. Creating a new study.")
-    #         pruner = optuna.pruners.HyperbandPruner(min_resource=self.min_resources_value)
-    #         self.study = optuna.create_study(study_name=self.study_name, direction='maximize', pruner=pruner, sampler=optuna.samplers.GPESampler())
-    #         self.save_study()
 
     def load_or_create_study(self):
         storage_path = f"sqlite:///studys/{self.study_name}.db"
-        # pruner = optuna.pruners.PercentilePruner(
-        #     percentile=10,  # Prune bottom 10% of trials, based on completed trials at the same step
-        #     n_startup_trials=20,  # Number of initial trials before any pruning occurs
-        #     n_warmup_steps=0,
-        #     # Minimum number of step to be observed before pruning.
-        #     interval_steps=1  # Check for pruning at every step.
-        # )
+        
         pruner = optuna.pruners.NopPruner
         self.study = optuna.create_study(study_name=self.study_name, storage=storage_path, direction='maximize',
                                          pruner=pruner, load_if_exists=True)
