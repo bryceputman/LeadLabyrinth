@@ -1007,7 +1007,7 @@ class GameClock:
         current_time = self.time_source()
 
         # Logging the current time for debugging
-        print(f'Current Tick Time: {current_time}')
+        # print(f'Current Tick Time: {current_time}')
 
         if self.training_ai:
             for _ in range(num_logic_updates):
@@ -1021,7 +1021,7 @@ class GameClock:
                     dt_update = (current_time - self.last_ai_update_time) * self.speed_multiplier
 
                     # Log the time difference for AI update
-                    print(f"Time since last AI update: {dt_update} secs")
+                    # print(f"Time since last AI update: {dt_update} secs")
 
                     self.last_ai_update_time = current_time
                     self.ai_callback(dt_update, self.envs_unwrapped, self.agents)
@@ -1029,7 +1029,7 @@ class GameClock:
                 dt_update = (current_time - self.last_update_time) * self.speed_multiplier
 
                 # Log the time difference for game update
-                print(f"Time since last game update: {dt_update} secs")
+                # print(f"Time since last game update: {dt_update} secs")
 
                 self.last_update_time = current_time
                 self.update_callback(dt_update)
@@ -1037,7 +1037,7 @@ class GameClock:
                 dt_render = current_time - self.last_frame_time
 
                 # Log the time difference for frame render
-                print(f"Time since last frame render: {dt_render} secs")
+                # print(f"Time since last frame render: {dt_render} secs")
 
                 self.last_frame_time = current_time
                 self.frame_callback()
@@ -1235,19 +1235,18 @@ class Game:
                     enemy.move(chosen_player, delta_time)
                     self.all_bullets.extend(enemy.fire(chosen_player, delta_time))
 
-            for player in self.players:
+            for player in self.players[:]:  # iterate over a copy of the list (removing from mutable while looping might be bad)
                 if player.health <= 0:
                     self.players.remove(player)
-                    # make sure first player has camera
-                if self.players:
-                    self.camera = self.players[0].camera
-                else:
-                    self.game_state = GAME_OVER
-                    if hasattr(self, 'human_player'):
-                        self.draw_game_over()
-                    # else:
-                    #     # print('reset in game')
-                    #     self.reset()
+
+            # After removing players, check if any players are left
+            if not self.players:
+                self.game_state = GAME_OVER
+                if hasattr(self, 'human_player'):
+                    self.draw_game_over()
+            else:
+                self.camera = self.players[0].camera
+
     # TODO create shop class
     def initialize_shop(self):
         self.shop_button_positions = {}
