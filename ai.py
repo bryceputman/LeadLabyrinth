@@ -3,7 +3,7 @@ import pickle
 import random
 import time
 import gymnasium as gym
-
+import heapq
 import numpy as np
 import optuna
 from matplotlib import pyplot as plt
@@ -135,74 +135,51 @@ class SingleAgentEnvironment(gym.Env):
     def get_state(self):
         state = np.full((self.TOTAL_ATTRIBUTES,), 0, dtype=np.float32)
 
-        # player information
+        # Player information
         player_pos_screen = self.player.camera.apply(self.player.rect).center
         state[:self.PLAYER_ATTRIBUTES] = [player_pos_screen[0] / SCREEN_WIDTH, player_pos_screen[1] / SCREEN_HEIGHT]
 
-        # Calculate distances for enemies
-        enemies_with_distances = [(enemy, self.distance_to_player_squared(enemy))
-                                  for enemy in self.game.wave_manager.enemies]
+        # Gather all enemies and bullets
+        enemies = self.game.wave_manager.enemies
+        bullets = [bullet for bullet in self.game.all_bullets if bullet.creator != 'player' and bullet.bullet_path != 'spiral_function']
 
-        # Sort enemies by distance and take the 10 closest
-        sorted_enemies = sorted(enemies_with_distances, key=lambda x: x[1])[:self.NUM_ENEMIES_LISTED]
-        for i, (enemy, _) in enumerate(sorted_enemies):
-            # Before adding enemies to the state
-            if self.player.camera.in_view(enemy):
-                enemy_pos_screen = self.player.camera.apply(enemy.rect).center
-                enemy_id_one_hot = [0] * 6
-                enemy_id_one_hot[enemy.id - 1] = 1
-                state[self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * i:
-                      self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * (i + 1)] = [
-                    enemy_pos_screen[0] / SCREEN_WIDTH,
-                    enemy_pos_screen[1] / SCREEN_HEIGHT,
-                    # enemy.speed / MAX_ENEMY_SPEED,
-                    *enemy_id_one_hot,
-                    ]
-        # enemy.speed / MAX_ENEMY_SPEED
-        # Calculate distances for bullets, excluding those with bullet_path == 'swirl_function'
-        bullets_with_distances = [(bullet, self.distance_to_player_squared(bullet))
-                                  for bullet in self.game.all_bullets if
-                                  bullet.creator != 'player' and bullet.bullet_path != 'spiral_function']
+        # Check if in view and calculate distances in bulk
+        visible_enemies = [(enemy, self.distance_to_player_squared(enemy)) for enemy in enemies if self.player.camera.in_view(enemy)]
+        visible_bullets = [(bullet, self.distance_to_player_squared(bullet)) for bullet in bullets if self.player.camera.in_view(bullet)]
 
-        # Sort bullets by distance and take the NUM_BULLETS_LISTED closest
-        sorted_bullets = sorted(bullets_with_distances, key=lambda x: x[1])[:self.NUM_BULLETS_LISTED]
-        # print(sorted_bullets)
-        for i, (bullet, _) in enumerate(sorted_bullets):
-            if self.player.camera.in_view(bullet):
-                bullet_pos_screen = self.player.camera.apply(bullet.rect).center
-                bullet_id_one_hot = [0] * 9
-                bullet_id_one_hot[bullet.id - 1] = 1
-                state[
-                self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * self.NUM_ENEMIES_LISTED + self.BULLET_ATTRIBUTES * i:
-                self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * self.NUM_ENEMIES_LISTED + self.BULLET_ATTRIBUTES * (
-                        i + 1)] = [
+        closest_enemies = heapq.nsmallest(self.NUM_ENEMIES_LISTED, visible_enemies, key=lambda x: x[1])
+        closest_bullets = heapq.nsmallest(self.NUM_BULLETS_LISTED, visible_bullets, key=lambda x: x[1])
+
+        for i, (enemy, _) in enumerate(closest_enemies):
+            enemy_pos_screen = self.player.camera.apply(enemy.rect).center
+            enemy_id_one_hot = np.zeros(6, dtype=int)
+            enemy_id_one_hot[enemy.id - 1] = 1
+            base_idx = self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * i
+            state[base_idx:base_idx + self.ENEMY_ATTRIBUTES] = np.hstack([
+                enemy_pos_screen[0] / SCREEN_WIDTH,
+                enemy_pos_screen[1] / SCREEN_HEIGHT,
+                enemy_id_one_hot
+            ])
+
+        bullet_base_idx = self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * self.NUM_ENEMIES_LISTED
+        for i, (bullet, _) in enumerate(closest_bullets):
+            bullet_pos_screen = self.player.camera.apply(bullet.rect).center
+            bullet_id_one_hot = np.zeros(9, dtype=int)
+            bullet_id_one_hot[bullet.id - 1] = 1
+            state[bullet_base_idx + self.BULLET_ATTRIBUTES * i:
+                bullet_base_idx + self.BULLET_ATTRIBUTES * (i + 1)] = np.hstack([
                     bullet_pos_screen[0] / SCREEN_WIDTH,
                     bullet_pos_screen[1] / SCREEN_HEIGHT,
-                    *bullet_id_one_hot,
+                    bullet_id_one_hot,
                     bullet.dx * bullet.speed / MAX_BULLET_SPEED,
                     bullet.dy * bullet.speed / MAX_BULLET_SPEED,
-                    bullet.speed / MAX_BULLET_SPEED,]
+                    bullet.speed / MAX_BULLET_SPEED,
+                ])
 
-        # clip state values to the range [-1, 1], excluding -2
-        state = np.where(state == -2, state, np.clip(state, -1, 1))
+        state = np.clip(state, -1, 1)
 
-        # check that the state values are all in the expected range
-        for i, value in enumerate(state):
-            if i < self.PLAYER_ATTRIBUTES:
-                attribute_type = "Player"
-            elif i < self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * self.NUM_ENEMIES_LISTED:
-                attribute_type = "Enemy"
-            elif i < self.TOTAL_ATTRIBUTES:
-                attribute_type = "Bullet"
-            else:
-                attribute_type = "Unknown"
-
-            if value < -1 or value > 1:
-                if value != -2:
-                    print(f"Warning: {attribute_type} state value at index {i} is out of expected range: {value}")
-        # print("New state:", state)
         return state
-
+    
     def distance_to_player_squared(self, obj):
         dx = self.player.rect.centerx - obj.rect.centerx
         dy = self.player.rect.centery - obj.rect.centery
@@ -332,10 +309,12 @@ class AgentTrainer:
         self.iteration = iteration
         study_str = f"{study_name}_" if study_name else ""
         iteration_str = f"{iteration}"
-
+        
         self.model_file = f"agents/{agent_type}_{study_str}{iteration_str}.zip"
         self.steps_file = f"steps/steps_{(study_str[:-1] + '_') if study_name else ''}{iteration_str}.pkl"
         self.avg_reward_file = f"avg_rewards/avg_rewards_{(study_str[:-1] + '_') if study_name else ''}{iteration_str}.pkl"
+
+        print(f"model file: {self.model_file}")
         self.plotting = plotting
         self.rendering = rendering
 
@@ -447,7 +426,7 @@ class StudyManager:
     def define_model(self, trial, env):
         gamma = trial.suggest_float('gamma', 0.98, 0.999)
         gae_lambda = trial.suggest_float('gae_lambda', 0.91, 0.97)
-        initial_layer_size = trial.suggest_int('initial_layer_size', 64, 512)
+        initial_layer_size = trial.suggest_int('initial_layer_size', 64, 1024)
         num_layers = trial.suggest_int('num_layers', 1, 5)
         total_percent_decrease = trial.suggest_float('total_percent_decrease', 0, 0.8)
         # divide the total percent decrease by the number of layers to get the decrease per layer
@@ -489,7 +468,7 @@ class StudyManager:
 
     def load_or_create_study(self):
         storage_path = f"sqlite:///studys/{self.study_name}.db"
-        
+
         pruner = optuna.pruners.NopPruner
         self.study = optuna.create_study(study_name=self.study_name, storage=storage_path, direction='maximize',
                                          pruner=pruner, load_if_exists=True)

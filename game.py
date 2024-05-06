@@ -293,7 +293,6 @@ class AIPlayer(Player):
         # self.camera = Camera(MAP_WIDTH, MAP_HEIGHT)
         # self.ai_model = self.load_ai_model()
 
-    # TODO will call once models are trained
     def load_ai_model(self):
         model = torch.load("path_to_saved_model.pt")
         model.eval()  # set the model to evaluation mode
@@ -304,16 +303,7 @@ class AIPlayer(Player):
         # mouse_buttons, mouse_x, mouse_y = self.action_to_mouse_buttons(action)
         return super().fire_secondary(action, delta_time)
 
-    # def choose_action(self, state):
-    #     # # Use the AI model to choose an action based on the current state
-    #     # action = self.ai_model.choose_action(state)
-    #     # Ignore the state and randomly choose actions
-    #     action = [random.random() for _ in range(9)]
-    #     return action
-
     def action_to_keys(self, action):
-        # print(f"action to keys {action}")
-        # Split the action into parts
         # w, a, s, d, space, _, _, _, _ = action
         w, a, s, d = action # remove space/right click
         # Each movement key is activated if the corresponding action part is greater than 0.5
@@ -327,28 +317,6 @@ class AIPlayer(Player):
         return keys
 
     def action_to_mouse_buttons(self, action):
-        # # action is the output of the agent, a value between 0 and 1
-        # angle_action = action[4]
-        #
-        # # convert the action to an angle
-        # angle = angle_action * 2 * math.pi
-        #
-        # # set the distance from the player at which to set the mouse position
-        # distance = 5  # you can adjust this as needed
-
-        # # calculate the x and y position
-        # mouse_x = np.clip(self.rect.centerx + distance * math.cos(angle), 0, SCREEN_WIDTH)
-        # mouse_y = np.clip(self.rect.centery + distance * math.sin(angle), 0, SCREEN_HEIGHT)
-
-        #old action
-        # print(action)
-        # Split the action into parts
-        # _, _, _, _, _, left, right, x, y = action
-        # _, _, _, _, left, x, y = action # remove space/right click
-        _, _, _, _, x, y = action # remove space/right click
-        # Each mouse button is pressed if the corresponding action part is greater than 0.5
-        # mouse_buttons = (left > 0.5, False, False) # not middle/right clicking
-
         x = min(max(0, x * SCREEN_WIDTH), SCREEN_WIDTH)
         y = min(max(0, y * SCREEN_HEIGHT), SCREEN_HEIGHT)
 
@@ -964,32 +932,6 @@ class Wave:
             enemy_data_copy = copy.deepcopy(enemy_data)
             wave_patterns.append(enemy_data_copy)
 
-        # Clear the existing wave patterns
-        # wave_patterns.clear()
-
-        # List of the specific enemy types to spawn
-        # specific_enemy_types = [ enemy_types[4], enemy_types[
-        #     2]]  # Assuming the straight enemy is at index 4 and homing enemy is at index 2
-        # specific_enemy_types = [enemy_types[5]] #homing
-        # specific_enemy_types = [enemy_types[2], enemy_types[
-        #     1]]  # Assuming the homing enemy is at index 2 and spiral enemy is at index 1
-
-        # for enemy_type in specific_enemy_types:
-        #     side = self.random.choice(['top', 'bottom', 'left', 'right'])
-        #     x, y = self.spawn_location(side)
-        #     base_stats, attacks = enemy_type[0:2], enemy_type[2]
-        #     for attack in attacks:
-        #         attack['creator'] = 'enemy'
-        #
-        #     # Scale health and speed based on wave number
-        #     health = base_stats[1] * multiplier * math.log(self.current_wave)
-        #     speed = min(PLAYER_SPEED * .8, base_stats[0] + (PLAYER_SPEED * 1.5 * math.log(self.current_wave)) / (
-        #                 math.log(self.current_wave) + 15))
-        #
-        #     # Prepare the enemy data
-        #     enemy_data = {'x': x, 'y': y, 'health': health, 'speed': speed, 'attack_list': attacks}
-        #     wave_patterns.append(copy.deepcopy(enemy_data))
-
         self.wave_patterns = wave_patterns
 
 
@@ -1030,7 +972,6 @@ class Wave:
     def is_wave_clear(self):
         return not bool(self.enemies)
 
-    # TODO look into if there is any benefit at all
     def get_enemies(self):
         return self.enemies
 
