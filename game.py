@@ -832,14 +832,14 @@ class WaveManager:
         self.wave_patterns = wave_patterns
 
     def start_next_wave(self):
-        if self.is_wave_clear() and self.wave_cooldown <= 0:
+        if self.is_wave_clear() and self.wave_cooldown_secs <= 0:
             self.current_wave += 1
             self.generate_wave_patterns()
-            self.wave_cooldown = 3
+            self.wave_cooldown_secs = 3
 
     def update(self, delta_time):
-        if self.wave_cooldown > 0:
-            self.wave_cooldown -= delta_time
+        if self.wave_cooldown_secs > 0:
+            self.wave_cooldown_secs -= delta_time
 
     def number_of_enemies(self):
         return len(self.enemy_manager.get_enemies())
@@ -1105,7 +1105,7 @@ class Game:
                                                           (SCREEN_WIDTH, SCREEN_HEIGHT))
             self.wave_num_text = self.font.render(f"Wave: {self.wave_manager.current_wave}", 1, (255, 255, 255))
             self.wave_cooldown_text = self.font.render(
-                f"Wave: {self.wave_manager.current_wave + 1} Starting in {self.wave_manager.wave_cooldown} Seconds", 1,
+                f"Wave: {self.wave_manager.current_wave + 1} Starting in {self.wave_manager.wave_cooldown_secs} Seconds", 1,
                 (255, 255, 255))
             if hasattr(self, 'human_player'):
                 self.coin_text = self.font.render(f"Coins: {self.human_player.coins}", 1, "white")
@@ -1189,13 +1189,13 @@ class Game:
                         self.game_state = SHOP
                         return  # Return here to not execute the rest of the code in this iteration
 
-                if self.wave_manager.wave_cooldown <= 0:
+                if self.wave_manager.wave_cooldown_secs <= 0:
                     self.wave_manager.current_wave += 1
                     self.wave_manager.start_next_wave()
-                    self.wave_manager.wave_cooldown = 3  # seconds in between each wave
+                    self.wave_manager.wave_cooldown_secs = 3  # seconds in between each wave
                     self.wave_ended = False  # Reset the flag as the new wave has started
 
-                self.wave_manager.wave_cooldown -= delta_time
+                self.wave_manager.wave_cooldown_secs -= delta_time
 
             self.update_bullets(self.all_bullets, self.players, self.wave_manager.get_enemies(), delta_time)
 
@@ -1291,10 +1291,10 @@ class Game:
             # self.draw_bullets(self.human_player.bullets)
             self.draw_bullets(self.all_bullets)
 
-            if self.wave_manager.wave_cooldown > 0 and self.wave_manager.is_wave_clear():
+            if self.wave_manager.wave_cooldown_secs > 0 and self.wave_manager.is_wave_clear():
                 if self.clock.num_updates % 6 == 0:
                     self.wave_cooldown_text = self.font.render(
-                        f"Wave {self.wave_manager.current_wave + 1} Starting in {round(self.wave_manager.wave_cooldown, 1)} Seconds",
+                        f"Wave {self.wave_manager.current_wave + 1} Starting in {round(self.wave_manager.wave_cooldown_secs, 1)} Seconds",
                         1, (255, 255, 255))
                     if hasattr(self, 'human_player'):
                         self.coin_text = self.font.render(f"Coins: {self.human_player.coins}", True, "white")
