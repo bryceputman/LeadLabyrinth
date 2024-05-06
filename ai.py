@@ -143,7 +143,7 @@ class SingleAgentEnvironment(gym.Env):
         enemies = self.game.wave_manager.enemies
         bullets = [bullet for bullet in self.game.all_bullets if bullet.creator != 'player' and bullet.bullet_path != 'spiral_function']
 
-        # Check if in view and calculate distances in bulk
+        # Check if in view and calculate distances
         visible_enemies = [(enemy, self.distance_to_player_squared(enemy)) for enemy in enemies if self.player.camera.in_view(enemy)]
         visible_bullets = [(bullet, self.distance_to_player_squared(bullet)) for bullet in bullets if self.player.camera.in_view(bullet)]
 
@@ -160,6 +160,7 @@ class SingleAgentEnvironment(gym.Env):
                 enemy_pos_screen[1] / SCREEN_HEIGHT,
                 enemy_id_one_hot
             ])
+
 
         bullet_base_idx = self.PLAYER_ATTRIBUTES + self.ENEMY_ATTRIBUTES * self.NUM_ENEMIES_LISTED
         for i, (bullet, _) in enumerate(closest_bullets):

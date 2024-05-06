@@ -24,10 +24,6 @@ class GameObject:
 
 
 class Player(GameObject):
-    DASH_MULTIPLIER = 200
-    DASH_COOLDOWN = 1*1000000000
-    DASH_DURATION = .001
-
     def __init__(self, x, y, image, primary_bullet_image, secondary_bullet_image,
                  full_hp_bar=None, full_dash_bar=None, full_secondary_bar=None, empty_bar=None,
                  speed=PLAYER_SPEED, health=MAX_PLAYER_HEALTH, bullet_path='normal_function', primary_shot_sound=None, rendering=True):
@@ -42,7 +38,7 @@ class Player(GameObject):
         self.bullets = []
         self.dashing = False
         self.secondary_cooldown = SECONDARY_PROJECTILE_COOLDOWN
-        self.dash_duration_remaining = self.DASH_DURATION
+        self.dash_duration_remaining = DASH_DURATION
         self.float_x = x
         self.float_y = y
         self.double_shot_active = False
@@ -59,7 +55,7 @@ class Player(GameObject):
         self.projectile_timer = PROJECTILE_COOLDOWN
         self.primary_projectile_cooldown = PROJECTILE_COOLDOWN
         self.secondary_projectile_timer = SECONDARY_PROJECTILE_COOLDOWN
-        self.dash_timer = self.DASH_COOLDOWN
+        self.dash_timer = DASH_COOLDOWN
         if self.rendering:
             font = pygame.font.SysFont('Arial', 16, bold=True, italic=False)
             self.dash_text = font.render('Dash', True, (255, 255, 255))
@@ -88,8 +84,8 @@ class Player(GameObject):
             # Dash movement
             time_to_dash = min(self.dash_duration_remaining, delta_time)
             self.dash_duration_remaining -= time_to_dash
-            dash_dx = (int(d) - int(a)) * self.speed * self.DASH_MULTIPLIER * time_to_dash
-            dash_dy = (int(s) - int(w)) * self.speed * self.DASH_MULTIPLIER * time_to_dash
+            dash_dx = (int(d) - int(a)) * self.speed * DASH_MULTIPLIER * time_to_dash
+            dash_dy = (int(s) - int(w)) * self.speed * DASH_MULTIPLIER * time_to_dash
         else:
             dash_dx = 0
             dash_dy = 0
@@ -196,8 +192,8 @@ class Player(GameObject):
         return self.dash_timer <= 0 and not self.dashing
 
     def start_dash(self):
-        self.dash_timer = self.DASH_COOLDOWN
-        self.dash_duration_remaining = self.DASH_DURATION  # initialize remaining dash duration
+        self.dash_timer = DASH_COOLDOWN
+        self.dash_duration_remaining = DASH_DURATION  # initialize remaining dash duration
         self.dashing = True
         bullets = self.generate_dash_particles()
         return bullets
@@ -238,7 +234,7 @@ class Player(GameObject):
         # Draw the dash bar
         dash_cooldown_remaining = self.dash_timer
         if dash_cooldown_remaining > 0:
-            dash_slice_width = self.empty_bar.get_width() * (dash_cooldown_remaining / self.DASH_COOLDOWN)
+            dash_slice_width = self.empty_bar.get_width() * (dash_cooldown_remaining / DASH_COOLDOWN)
             empty_dash_bar_slice = pygame.Surface((dash_slice_width, self.empty_bar.get_height()), pygame.SRCALPHA)
             empty_dash_bar_slice.blit(self.empty_bar, (0, 0), (
                 self.empty_bar.get_width() - dash_slice_width, 0, dash_slice_width, self.empty_bar.get_height()))
@@ -668,96 +664,74 @@ class Bullet:
         pygame.draw.rect(screen, (255, 0, 0), self.rect, 2)  # 2 is the thickness of the line
 
 
-class Wave:
-    def __init__(self, enemy_image, primary_bullet_image, boomerang_bullet_image, difficulty_selected, starting_wave=1, random_obj=random.Random()):
-        self.wave_patterns = []
-        self.random = random_obj
-        self.current_wave = starting_wave
-        self.number_of_enemies = self.current_wave
+class EnemyManager:
+    def __init__(self, enemy_image, primary_bullet_image, boomerang_bullet_image):
         self.enemies = []
         self.enemy_image = enemy_image
         self.primary_bullet_image = primary_bullet_image
         self.boomerang_bullet_image = boomerang_bullet_image
-        self.difficulty_selected = difficulty_selected
+
+    def add_enemy(self, x, y, health, speed, attack_list, enemy_path, id):
+        new_enemy = Enemy(x, y, self.enemy_image, self.primary_bullet_image,
+                          self.boomerang_bullet_image, attack_list, speed, health, enemy_path, id)
+        self.enemies.append(new_enemy)
+
+    def update_enemies(self, delta_time, player):
+        for enemy in self.enemies:
+            enemy.move(player, delta_time)
+            if enemy.health <= 0:
+                self.enemies.remove(enemy)
+
+    def get_enemies(self):
+        return self.enemies
+
+class WaveManager:
+    def __init__(self, enemy_manager, difficulty='easy', starting_wave=1):
+        self.enemy_manager = enemy_manager
+        self.current_wave = starting_wave
+        self.wave_cooldown_secs = 3  
+        self.difficulty = difficulty
+        self.starting_enemies_in_wave = 0
+        self.random = random.Random()
+        self.difficulty_multipliers = {'easy': 1, 'medium': 1.5, 'hard': 2}
         self.generate_wave_patterns()
-        self.generate_wave()
-        self.wave_cooldown = 3
 
-    def spawn_location(self, side):
-        # distance_from_center_x = random.randint(100, 400)
-        # distance_from_center_y = random.randint(100, 400)
-        #
-        # if side == 'top':
-        #     x = SCREEN_WIDTH // 2 + random.uniform(-1, 1) * distance_from_center_x - self.enemy_image.get_width() // 2
-        #     y = SCREEN_HEIGHT // 2 - distance_from_center_y - self.enemy_image.get_height() // 2
-        # elif side == 'bottom':
-        #     x = SCREEN_WIDTH // 2 + random.uniform(-1, 1) * distance_from_center_x - self.enemy_image.get_width() // 2
-        #     y = SCREEN_HEIGHT // 2 + distance_from_center_y - self.enemy_image.get_height() // 2
-        # elif side == 'left':
-        #     x = SCREEN_WIDTH // 2 - distance_from_center_x - self.enemy_image.get_width() // 2
-        #     y = SCREEN_HEIGHT // 2 + random.uniform(-1, 1) * distance_from_center_y - self.enemy_image.get_height() // 2
-        # else:  # 'right'
-        #     x = SCREEN_WIDTH // 2 + distance_from_center_x - self.enemy_image.get_width() // 2
-        #     y = SCREEN_HEIGHT // 2 + random.uniform(-1, 1) * distance_from_center_y - self.enemy_image.get_height() // 2
-        #
-        # return x, y
-
-        # for actual game
-        outer_border_thickness = ((SCREEN_WIDTH + SCREEN_HEIGHT) // 2) // 20
-        if side == 'top':
-            x = self.random.randint(0, MAP_WIDTH - self.enemy_image.get_width())
-            y = self.random.randint(0, outer_border_thickness)
-        elif side == 'bottom':
-            x = self.random.randint(0, MAP_WIDTH - self.enemy_image.get_width())
-            y = self.random.randint(MAP_HEIGHT - outer_border_thickness - self.enemy_image.get_height(),
-                               MAP_HEIGHT - self.enemy_image.get_height())
-        elif side == 'left':
-            x = self.random.randint(0, outer_border_thickness)
-            y = self.random.randint(0, MAP_HEIGHT - self.enemy_image.get_height())
-        else:  # 'right'
-            x = self.random.randint(MAP_WIDTH - outer_border_thickness - self.enemy_image.get_width(),
-                               MAP_WIDTH - self.enemy_image.get_width())
-            y = self.random.randint(0, MAP_HEIGHT - self.enemy_image.get_height())
+    def spawn_location(self, side=None):
+        """Generate a spawn location on a given side of the map or randomly."""
+        if not side:
+            x = self.random.randint(0, MAP_WIDTH)
+            y = self.random.randint(0, MAP_HEIGHT)
+        else:
+            if side == 'top':
+                x = self.random.randint(0, MAP_WIDTH)
+                y = 0
+            elif side == 'bottom':
+                x = self.random.randint(0, MAP_WIDTH)
+                y = MAP_HEIGHT
+            elif side == 'left':
+                x = 0
+                y = self.random.randint(0, MAP_HEIGHT)
+            elif side == 'right':
+                x = MAP_WIDTH
+                y = self.random.randint(0, MAP_HEIGHT)
         return x, y
 
     def generate_wave_patterns(self):
-        difficulty_multipliers = {
-            'easy': 1,
-            'medium': 1.5,
-            'hard': 2
-        }
-
-        if self.difficulty_selected not in difficulty_multipliers:
-            raise ValueError("Invalid difficulty selected. Expected 'easy', 'medium', or 'hard'.")
-
-        multiplier = difficulty_multipliers[self.difficulty_selected]
+        multiplier = self.difficulty_multipliers[self.difficulty]
         wave_patterns = []
 
-        # list of enemies
-        # each enemy is speed, health, attack_list
-        # attack_list contains attacks and all attack stats
-        # Enemies and their IDs
+        # Enemy and attack IDs
         ENEMY_SPREAD_ID = 1
         ENEMY_SPIRAL_ID = 2
         ENEMY_HOMING_ID = 3
         ENEMY_STRAIGHT_ID = 4
-        BOSS1_ID = 5
-        BOSS2_ID = 6
-
-        # Attacks and their IDs
         SPREAD_ATTACK_ID = 1
-        # SPIRAL_ATTACK_ID = 2
-        RANDOM_ATTACK_ID = 2
-        STRAIGHT_ATTACK_ID = 3
-        SPIRAL_PATTERN_ATTACK_ID = 4
-        CHAOS_ATTACK_ID = 5
-        BOSS_SWIRL_SIN_ATTACK_ID = 6
-        BOSS_SWIRL_COS_ATTACK_ID = 7
-        BOSS_STRAIGHT_ATTACK_ID = 8
+        SPIRAL_ATTACK_ID = 2
+        RANDOM_ATTACK_ID = 3
+        STRAIGHT_ATTACK_ID = 4
 
-        # Enemy and Attack configurations
+        # Enemy configurations
         enemy_types = [
-            # spread enemy
             (ENEMY_SPREAD_ID, BASE_ENEMY_SPEED, BASE_ENEMY_HEALTH, [
                 {
                     'attack_id': SPREAD_ATTACK_ID,
@@ -770,12 +744,12 @@ class Wave:
                     'damage': BASE_ENEMY_DAMAGE,
                     'scale': 5,
                     'lifetime': 1,
+                    'creator': 'enemy'
                 }
             ]),
-
-            # spiral enemy
             (ENEMY_SPIRAL_ID, BASE_ENEMY_SPEED * 2, BASE_ENEMY_HEALTH * 2, [
                 {
+                    'attack_id': SPIRAL_ATTACK_ID,
                     'bullet_cooldown': ENEMY_PROJECTILE_COOLDOWN / 5,
                     'bullet_timer': self.random.uniform(0, ENEMY_PROJECTILE_COOLDOWN),
                     'bullet_image': 'fire_ball',
@@ -785,10 +759,9 @@ class Wave:
                     'damage': BASE_ENEMY_DAMAGE * 5,
                     'scale': 5,
                     'lifetime': ENEMY_PROJECTILE_COOLDOWN / 3,
+                    'creator': 'enemy'
                 }
             ]),
-
-            # homing enemy
             (ENEMY_HOMING_ID, BASE_ENEMY_SPEED * 1.25, BASE_ENEMY_HEALTH * 1.3, [
                 {
                     'attack_id': RANDOM_ATTACK_ID,
@@ -802,10 +775,9 @@ class Wave:
                     'damage': BASE_ENEMY_DAMAGE * 1.5 * 3,
                     'scale': 5,
                     'lifetime': 5,
+                    'creator': 'enemy'
                 }
             ]),
-
-            # straight enemy
             (ENEMY_STRAIGHT_ID, BASE_ENEMY_SPEED * 0.75, BASE_ENEMY_HEALTH, [
                 {
                     'attack_id': STRAIGHT_ATTACK_ID,
@@ -818,162 +790,70 @@ class Wave:
                     'damage': BASE_ENEMY_DAMAGE * 5,
                     'scale': 10,
                     'lifetime': 5,
+                    'creator': 'enemy'
                 }
             ]),
         ]
 
-        boss_types = [
-            # BOSS1 configurations
-            (BOSS1_ID, BASE_ENEMY_SPEED / 4, BASE_ENEMY_HEALTH * 12, [
-                {
-                    'attack_id': SPIRAL_PATTERN_ATTACK_ID,
-                    'bullet_cooldown': ENEMY_PROJECTILE_COOLDOWN * 100,
-                    'bullet_timer': self.random.uniform(0, ENEMY_PROJECTILE_COOLDOWN),
-                    'bullet_image': 'fire_ball',
-                    'shot_pattern': 'spiral_pattern',
-                    'bullet_path': 'normal_function',
-                    'bullet_speed': BASE_ENEMY_BULLET_SPEED,
-                    'homing_factor': .1,
-                    'damage': BASE_ENEMY_DAMAGE * 20,
-                    'scale': 5,
-                    'lifetime': ENEMY_PROJECTILE_COOLDOWN * 100,
-                },
-                {
-                    'attack_id': CHAOS_ATTACK_ID,
-                    'bullet_cooldown': ENEMY_PROJECTILE_COOLDOWN * 0.5,
-                    'bullet_timer': self.random.uniform(0, ENEMY_PROJECTILE_COOLDOWN),
-                    'bullet_image': 'bullet',
-                    'shot_pattern': 'random',
-                    'bullet_path': 'acceleration_function',
-                    'homing_factor': 0.04,
-                    'bullet_speed': BASE_ENEMY_BULLET_SPEED,
-                    'damage': BASE_ENEMY_DAMAGE * 1.5,
-                    'scale': 5,
-                    'lifetime': ENEMY_PROJECTILE_COOLDOWN * 15,
-                }
-            ]),
-
-            # BOSS2 configurations
-            (BOSS2_ID, BASE_ENEMY_SPEED / 5, BASE_ENEMY_HEALTH * 10, [
-                {
-                    'attack_id': BOSS_SWIRL_SIN_ATTACK_ID,
-                    'bullet_cooldown': ENEMY_PROJECTILE_COOLDOWN * 2,
-                    'bullet_timer': self.random.uniform(0, ENEMY_PROJECTILE_COOLDOWN),
-                    'bullet_image': 'fire_ball',
-                    'shot_pattern': 'boss_swirl_sin',
-                    'bullet_path': 'sine_wave_function',
-                    'bullet_speed': BASE_ENEMY_BULLET_SPEED * .8,
-                    'damage': BASE_ENEMY_DAMAGE * 2,
-                    'scale': 5,
-                    'lifetime': 20,
-                },
-                {
-                    'attack_id': BOSS_SWIRL_COS_ATTACK_ID,
-                    'bullet_cooldown': ENEMY_PROJECTILE_COOLDOWN * 2,
-                    'bullet_timer': self.random.uniform(0, ENEMY_PROJECTILE_COOLDOWN),
-                    'bullet_image': 'fire_ball',
-                    'shot_pattern': 'boss_swirl_cos',
-                    'bullet_path': 'cosine_wave_function',
-                    'bullet_speed': BASE_ENEMY_BULLET_SPEED * .8,
-                    'damage': BASE_ENEMY_DAMAGE * 2,
-                    'scale': 5,
-                    'lifetime': 20,
-                },
-                {
-                    'attack_id': BOSS_STRAIGHT_ATTACK_ID,
-                    'bullet_cooldown': ENEMY_PROJECTILE_COOLDOWN * 5,
-                    'bullet_timer': self.random.uniform(0, ENEMY_PROJECTILE_COOLDOWN),
-                    'bullet_image': 'bullet',
-                    'shot_pattern': 'boss_straight',
-                    'bullet_path': 'acceleration_function',
-                    'homing_factor': 0.1,
-                    'bullet_speed': BASE_ENEMY_BULLET_SPEED,
-                    'damage': BASE_ENEMY_DAMAGE * 2,
-                    'scale': 5,
-                    'lifetime': ENEMY_PROJECTILE_COOLDOWN * 5,
-                }
-            ]),
-        ]
-
-        enemy_probabilities = [0.2, 0.2, 0.2, 0.2]
-        # enemy_probabilities = [0, 1, 0, 0, 0, 0] # seeing if ai can get good at only fast, spiral enemies
-        boss_probabilities = [0.5, 0.5]
-
-        # Determine enemy types and count based on wave number
-        if self.current_wave % 5 == 0:# TODO change after ai training back to 5
-            types_to_use = boss_types
-            probabilities_to_use = boss_probabilities
-            self.number_of_enemies = self.current_wave // 5
+        # Calculate number of enemies for this wave
+        if self.current_wave % 5 == 0:
+            number_of_enemies = self.current_wave // 5
         else:
-            types_to_use = enemy_types
-            probabilities_to_use = enemy_probabilities
-            self.number_of_enemies = self.current_wave
-
-        for enemy_number in range(self.number_of_enemies):
+            number_of_enemies = self.current_wave
+        self.starting_enemies_in_wave = number_of_enemies
+        
+        # Generate enemies with configs
+        for _ in range(number_of_enemies):
             side = self.random.choice(['top', 'bottom', 'left', 'right'])
             x, y = self.spawn_location(side)
-
-            # Select enemy type
-            enemy_type = self.random.choices(types_to_use, probabilities_to_use)[0]
-
-            # Extract base stats and attacks separately
+            enemy_type = self.random.choice(enemy_types)
             base_stats, attacks = enemy_type[0:3], enemy_type[3]
-            for attack in attacks:  # maybe good to write manually, not sure
-                attack['creator'] = 'enemy'
 
             # Scale health and speed based on wave number
-            health = base_stats[2] * multiplier * math.log(self.current_wave+1)
-            speed = min(PLAYER_SPEED * .8, base_stats[1] + (PLAYER_SPEED * 1.5 * math.log(self.current_wave+1)) / (
-                    math.log(self.current_wave+1) + 15))
-            id = base_stats[0]
+            health = base_stats[2] * multiplier * math.log(self.current_wave + 1)
+            speed = min(
+                PLAYER_SPEED * 0.8,
+                base_stats[1] + (PLAYER_SPEED * 1.5 * math.log(self.current_wave + 1)) / (math.log(self.current_wave + 1) + 15)
+            )
+            enemy_id = base_stats[0]
 
             # Prepare the enemy data
-            enemy_data = {'id':id, 'x': x, 'y': y, 'health': health, 'speed': speed, 'attack_list': attacks}
-            enemy_data_copy = copy.deepcopy(enemy_data)
-            wave_patterns.append(enemy_data_copy)
+            enemy_data = {
+                'id': enemy_id,
+                'x': x,
+                'y': y,
+                'health': health,
+                'speed': speed,
+                'attack_list': copy.deepcopy(attacks)
+            }
+            wave_patterns.append(enemy_data)
+            self.enemy_manager.add_enemy(x, y, health, speed, enemy_data['attack_list'], 'move_toward', id=enemy_id)
 
         self.wave_patterns = wave_patterns
 
+    def start_next_wave(self):
+        if self.is_wave_clear() and self.wave_cooldown <= 0:
+            self.current_wave += 1
+            self.generate_wave_patterns()
+            self.wave_cooldown = 3
 
-    def generate_wave(self):
-        # print(f"Generating wave {self.current_wave}")
-        # clear enemies before adding
-        self.enemies.clear()
-        for enemy_data in self.wave_patterns:
-            # print(f"Creating enemy with data {enemy_data}")
-            self.enemies.append(
-                Enemy(enemy_data['x'], enemy_data['y'], self.enemy_image, self.primary_bullet_image,
-                      self.boomerang_bullet_image, enemy_data['attack_list'], enemy_data['speed'], enemy_data['health'],
-                      enemy_path='move_toward', id=enemy_data['id']))
+    def update(self, delta_time):
+        if self.wave_cooldown > 0:
+            self.wave_cooldown -= delta_time
 
-    def draw_debug_spawn_borders(self, screen):
-        # Assumes that screen is a pygame.Surface object
-        border_color = (255, 0, 0)  # red color for the border
-        border_thickness = 2  # thickness of the border line
-        outer_border_thickness = 100
-        # Top border
-        pygame.draw.line(screen, border_color, (0, outer_border_thickness), (MAP_WIDTH, outer_border_thickness),
-                         border_thickness)
-
-        # Bottom border
-        pygame.draw.line(screen, border_color, (0, MAP_HEIGHT - outer_border_thickness - self.enemy_image.get_height()),
-                         (MAP_WIDTH, MAP_HEIGHT - outer_border_thickness - self.enemy_image.get_height()),
-                         border_thickness)
-
-        # Left border
-        pygame.draw.line(screen, border_color, (outer_border_thickness, 0), (outer_border_thickness, MAP_HEIGHT),
-                         border_thickness)
-
-        # Right border
-        pygame.draw.line(screen, border_color, (MAP_WIDTH - outer_border_thickness - self.enemy_image.get_width(), 0),
-                         (MAP_WIDTH - outer_border_thickness - self.enemy_image.get_width(), MAP_HEIGHT),
-                         border_thickness)
+    def number_of_enemies(self):
+        return len(self.enemy_manager.get_enemies())
 
     def is_wave_clear(self):
-        return not bool(self.enemies)
+        return not bool(self.enemy_manager.get_enemies())
 
     def get_enemies(self):
-        return self.enemies
+        return self.enemy_manager.get_enemies()
+
+    def get_starting_enemies_in_wave(self):
+        return self.starting_enemies_in_wave
+
+
 
 
 class Camera:
@@ -1184,8 +1064,9 @@ class Game:
         self.game_state = PLAYING
         self.all_bullets = []
         self.difficulty_selected = 'easy'
-        self.wave_manager = Wave(self.resources["enemy_image"], self.resources["enemy_primary_bullet_image"],
-                                 self.resources["enemy_boomerang_bullet_image"], self.difficulty_selected, random_obj=self.enemy_spawning_random)
+        self.enemy_manager = EnemyManager(self.resources["enemy_image"], self.resources["enemy_primary_bullet_image"],
+                                 self.resources["enemy_boomerang_bullet_image"])
+        self.wave_manager = WaveManager(self.enemy_manager, self.difficulty_selected, starting_wave=1)
         self.game_objects = self.wave_manager.get_enemies()[:] # make it not the same mutable list
 
 
@@ -1310,14 +1191,13 @@ class Game:
 
                 if self.wave_manager.wave_cooldown <= 0:
                     self.wave_manager.current_wave += 1
-                    self.wave_manager.generate_wave_patterns()
-                    self.wave_manager.generate_wave()
+                    self.wave_manager.start_next_wave()
                     self.wave_manager.wave_cooldown = 3  # seconds in between each wave
                     self.wave_ended = False  # Reset the flag as the new wave has started
 
                 self.wave_manager.wave_cooldown -= delta_time
 
-            self.update_bullets(self.all_bullets, self.players, self.wave_manager.enemies, delta_time)
+            self.update_bullets(self.all_bullets, self.players, self.wave_manager.get_enemies(), delta_time)
 
             # TODO ai currently controlled by ai env, not game, change later
             # for player in self.players:
@@ -1346,7 +1226,7 @@ class Game:
                 self.all_bullets.extend(self.human_player.fire_secondary(action, delta_time))
 
             # TODO maybe make chase and shoot at closest player, updating only maybe ever .25 sec
-            for enemy in self.wave_manager.enemies:
+            for enemy in self.wave_manager.get_enemies():
                 if len(self.players) > 1:  # Check if there are any players left
                     chosen_player = random.choice(self.players)
                 else:
@@ -1405,7 +1285,7 @@ class Game:
             #     self.camera.update(self.human_player)
             # elif self.players:
             #     self.camera.update(self.players[0])
-            self.game_objects = [self.map_obj] + self.wave_manager.enemies + self.players
+            self.game_objects = [self.map_obj] + self.wave_manager.get_enemies() + self.players
 
             self.draw_game_objects(self.game_objects)
             # self.draw_bullets(self.human_player.bullets)
@@ -1499,12 +1379,12 @@ class Game:
             if bullet in bullets:
                 bullets.remove(bullet)
         for target in targets_to_remove:
-            if target in self.wave_manager.enemies:
-                self.wave_manager.enemies.remove(target)
+            if target in self.wave_manager.get_enemies():
+                self.wave_manager.get_enemies().remove(target)
                 if hasattr(self, 'human_player'):
                     self.human_player.health = min(self.human_player.max_health,
                                                    self.human_player.health + self.human_player.percent_hp_gain * self.human_player.max_health /
-                                                   self.wave_manager.number_of_enemies)
+                                                   self.wave_manager.get_starting_enemies_in_wave())
             elif target in targets:
                 targets.remove(target)
 

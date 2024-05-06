@@ -120,7 +120,7 @@ def main():
 
     # play game
     if playing:
-        game = Game(num_of_ai_players_at_start=1, has_human_player=True)
+        game = Game(num_of_ai_players_at_start=0, has_human_player=True)
         while True:
             global running
             running = True
